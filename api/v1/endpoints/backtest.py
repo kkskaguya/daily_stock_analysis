@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -23,6 +24,20 @@ from src.storage import DatabaseManager
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _validate_analysis_date_range(
+    analysis_date_from: Optional[date],
+    analysis_date_to: Optional[date],
+) -> None:
+    if analysis_date_from and analysis_date_to and analysis_date_from > analysis_date_to:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_params",
+                "message": "analysis_date_from cannot be after analysis_date_to",
+            },
+        )
 
 
 @router.post(
@@ -45,6 +60,7 @@ def run_backtest(
             code=request.code,
             force=request.force,
             eval_window_days=request.eval_window_days,
+            min_age_days=request.min_age_days,
             limit=request.limit,
         )
         return BacktestRunResponse(**stats)
@@ -68,13 +84,24 @@ def run_backtest(
 )
 def get_backtest_results(
     code: Optional[str] = Query(None, description="股票代码筛选"),
+    eval_window_days: Optional[int] = Query(None, ge=1, le=120, description="评估窗口过滤"),
+    analysis_date_from: Optional[date] = Query(None, description="分析日期起始（含）"),
+    analysis_date_to: Optional[date] = Query(None, description="分析日期结束（含）"),
     page: int = Query(1, ge=1, description="页码"),
     limit: int = Query(20, ge=1, le=200, description="每页数量"),
     db_manager: DatabaseManager = Depends(get_database_manager),
 ) -> BacktestResultsResponse:
     try:
+        _validate_analysis_date_range(analysis_date_from, analysis_date_to)
         service = BacktestService(db_manager)
-        data = service.get_recent_evaluations(code=code, limit=limit, page=page)
+        data = service.get_recent_evaluations(
+            code=code,
+            eval_window_days=eval_window_days,
+            limit=limit,
+            page=page,
+            analysis_date_from=analysis_date_from,
+            analysis_date_to=analysis_date_to,
+        )
         items = [BacktestResultItem(**item) for item in data.get("items", [])]
         return BacktestResultsResponse(
             total=int(data.get("total", 0)),
@@ -82,6 +109,8 @@ def get_backtest_results(
             limit=limit,
             items=items,
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error(f"查询回测结果失败: {exc}", exc_info=True)
         raise HTTPException(
@@ -101,17 +130,32 @@ def get_backtest_results(
     summary="获取整体回测表现",
 )
 def get_overall_performance(
+    eval_window_days: Optional[int] = Query(None, ge=1, le=120, description="评估窗口过滤"),
+    analysis_date_from: Optional[date] = Query(None, description="分析日期起始（含）"),
+    analysis_date_to: Optional[date] = Query(None, description="分析日期结束（含）"),
     db_manager: DatabaseManager = Depends(get_database_manager),
 ) -> PerformanceMetrics:
     try:
+        _validate_analysis_date_range(analysis_date_from, analysis_date_to)
         service = BacktestService(db_manager)
-        summary = service.get_summary(scope="overall", code=None)
+        summary = service.get_summary(
+            scope="overall",
+            code=None,
+            eval_window_days=eval_window_days,
+            analysis_date_from=analysis_date_from,
+            analysis_date_to=analysis_date_to,
+        )
         if summary is None:
             raise HTTPException(
                 status_code=404,
                 detail={"error": "not_found", "message": "未找到整体回测汇总"},
             )
         return PerformanceMetrics(**summary)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_params", "message": str(exc)},
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -134,17 +178,32 @@ def get_overall_performance(
 )
 def get_stock_performance(
     code: str,
+    eval_window_days: Optional[int] = Query(None, ge=1, le=120, description="评估窗口过滤"),
+    analysis_date_from: Optional[date] = Query(None, description="分析日期起始（含）"),
+    analysis_date_to: Optional[date] = Query(None, description="分析日期结束（含）"),
     db_manager: DatabaseManager = Depends(get_database_manager),
 ) -> PerformanceMetrics:
     try:
+        _validate_analysis_date_range(analysis_date_from, analysis_date_to)
         service = BacktestService(db_manager)
-        summary = service.get_summary(scope="stock", code=code)
+        summary = service.get_summary(
+            scope="stock",
+            code=code,
+            eval_window_days=eval_window_days,
+            analysis_date_from=analysis_date_from,
+            analysis_date_to=analysis_date_to,
+        )
         if summary is None:
             raise HTTPException(
                 status_code=404,
                 detail={"error": "not_found", "message": f"未找到 {code} 的回测汇总"},
             )
         return PerformanceMetrics(**summary)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_params", "message": str(exc)},
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -153,4 +212,3 @@ def get_stock_performance(
             status_code=500,
             detail={"error": "internal_error", "message": f"查询单股表现失败: {str(exc)}"},
         )
-

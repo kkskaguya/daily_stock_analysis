@@ -12,6 +12,7 @@ class BacktestRunRequest(BaseModel):
     code: Optional[str] = Field(None, description="仅回测指定股票")
     force: bool = Field(False, description="强制重新计算")
     eval_window_days: Optional[int] = Field(None, ge=1, le=120, description="评估窗口（交易日数）")
+    min_age_days: Optional[int] = Field(None, ge=0, le=365, description="分析记录最小天龄（0=不限）")
     limit: int = Field(200, ge=1, le=2000, description="最多处理的分析记录数")
 
 
@@ -26,18 +27,22 @@ class BacktestRunResponse(BaseModel):
 class BacktestResultItem(BaseModel):
     analysis_history_id: int
     code: str
+    stock_name: Optional[str] = None
     analysis_date: Optional[str] = None
     eval_window_days: int
     engine_version: str
     eval_status: str
     evaluated_at: Optional[str] = None
     operation_advice: Optional[str] = None
+    trend_prediction: Optional[str] = None
     position_recommendation: Optional[str] = None
     start_price: Optional[float] = None
     end_close: Optional[float] = None
     max_high: Optional[float] = None
     min_low: Optional[float] = None
     stock_return_pct: Optional[float] = None
+    actual_return_pct: Optional[float] = None
+    actual_movement: Optional[str] = None
     direction_expected: Optional[str] = None
     direction_correct: Optional[bool] = None
     outcome: Optional[str] = None
@@ -90,4 +95,3 @@ class PerformanceMetrics(BaseModel):
 
     advice_breakdown: Dict[str, Any] = Field(default_factory=dict)
     diagnostics: Dict[str, Any] = Field(default_factory=dict)
-

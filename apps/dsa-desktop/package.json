@@ -28,12 +28,21 @@
         "to": ".env.example"
       },
       {
-        "from": "../../dist/backend/stock_analysis.exe",
-        "to": "backend/stock_analysis.exe"
+        "from": "../../dist/backend/stock_analysis",
+        "to": "backend/stock_analysis"
       }
     ],
     "win": {
-      "target": "portable"
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": false,
+      "include": "installer.nsh"
+    },
+    "mac": {
+      "target": "dmg"
     }
   }
 }
